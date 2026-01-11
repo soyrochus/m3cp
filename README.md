@@ -22,7 +22,7 @@ The server is file-first: it only reads from explicit input paths/URLs and write
 ![Tools](./mcp-tools.png)
 > the image was created by the MCP server
 
-[Audio description of the project](./mcp-tools.mp3)
+[Audio description of the project](https://raw.githubusercontent.com/soyrochus/m3cp/main/mcp-tools.mp3)
 > the audio file was created by the MCP server
 
 ## Run Locally
