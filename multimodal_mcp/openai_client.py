@@ -78,7 +78,7 @@ class OpenAIClient:
             base_url=settings.openai_base_url,
             organization=settings.openai_org_id,
             project=settings.openai_project,
-            timeout=30.0,
+            timeout=90.0,  # Image generation can take longer
             max_retries=0,
         )
 
@@ -172,10 +172,9 @@ class OpenAIClient:
             "size": size,
             "background": background,
             "quality": quality,
-            "response_format": "b64_json",
         }
-        if output_format:
-            params["output_format"] = output_format
+        # Note: format/output_format not supported by all models (e.g., gpt-image-1)
+        # The output format will be inferred from the file extension when writing
         params = {key: value for key, value in params.items() if value is not None}
         try:
             client: Any = self._client
@@ -186,8 +185,26 @@ class OpenAIClient:
             error_msg = f"OpenAI image generation error: {type(exc).__name__} - {str(exc)}"
             raise mcp_error(OPENAI_ERROR, error_msg, exc)
         duration_ms = int((time.monotonic() - started) * 1000)
-        b64_json = response.data[0].b64_json  # type: ignore[attr-defined]
-        return ImageGenerationResult(data=base64.b64decode(b64_json), duration_ms=duration_ms)
+        
+        # Handle both b64_json and URL responses
+        item = response.data[0]
+        has_b64 = hasattr(item, 'b64_json')
+        b64_val = getattr(item, 'b64_json', None) if has_b64 else None
+        has_url = hasattr(item, 'url')
+        url_val = getattr(item, 'url', None) if has_url else None
+        
+        if has_b64 and b64_val is not None:
+            image_data = base64.b64decode(b64_val)
+        elif has_url and url_val is not None:
+            # Download from URL for models like DALL-E-3
+            url_response = httpx.get(url_val, timeout=30.0)
+            url_response.raise_for_status()
+            image_data = url_response.content
+        else:
+            error_details = f"has_b64={has_b64}, b64_val={b64_val is not None if b64_val else False}, has_url={has_url}, url_val={url_val is not None if url_val else False}"
+            raise mcp_error(OPENAI_ERROR, f"No image data in response ({error_details})")
+        
+        return ImageGenerationResult(data=image_data, duration_ms=duration_ms)
 
     @_retryable()
     def transcribe_audio(
